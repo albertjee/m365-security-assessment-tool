@@ -106,7 +106,7 @@ function New-SequencePlan {
 
     return [PSCustomObject]@{
         rulesVersion = $RulesVersion
-        planHash     = $hash
+        planHash     = "sha256:$hash"
         phases       = $phases.ToArray()
         summary      = [PSCustomObject]@{
             total    = $total

@@ -2,7 +2,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Invoke-Executor {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
     param(
         [Parameter(Mandatory)] $Plan,
         [Parameter(Mandatory)] $Actions,
@@ -66,6 +66,17 @@ function Invoke-Executor {
                     order    = $entry.order
                     outcome  = 'WriteGateDenied'
                     reason   = 'Write gate conditions not met'
+                })
+                continue
+            }
+
+            if (-not $PSCmdlet.ShouldProcess($entry.actionId, 'Execute remediation action')) {
+                $executionLog.Add([PSCustomObject]@{
+                    actionId = $entry.actionId
+                    phase    = $phase.phaseNumber
+                    order    = $entry.order
+                    outcome  = 'WhatIf'
+                    reason   = 'ShouldProcessDenied'
                 })
                 continue
             }

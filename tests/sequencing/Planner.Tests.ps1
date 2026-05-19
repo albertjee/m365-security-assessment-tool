@@ -35,10 +35,10 @@ Describe 'New-SequencePlan — basic structure' {
         $plan.rulesVersion | Should -Be '1.0.0'
     }
 
-    It 'planHash is sha256 hex string (64 chars)' {
+    It 'planHash has sha256: prefix followed by 64 hex chars' {
         $actions = @(New-PlanAction 'ACT-A')
         $plan = New-SequencePlan -Actions $actions -RulesVersion '1.0.0'
-        $plan.planHash | Should -Match '^[0-9a-f]{64}$'
+        $plan.planHash | Should -Match '^sha256:[0-9a-f]{64}$'
     }
 }
 

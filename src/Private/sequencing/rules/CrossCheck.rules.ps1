@@ -5,35 +5,39 @@ function Get-Rules {
     @(
         [PSCustomObject]@{
             ruleId          = 'CC-001'
-            appliesToAction = 'ACT-PIM-CONVERT-ACTIVE-TO-ELIGIBLE'
+            appliesToAction = 'ACT-CA-ENFORCE-MFA'
             type            = 'Dependency'
-            condition       = [PSCustomObject]@{ fact='CAFrameworkPresent'; operator='Equals'; value=$true }
-            effect          = [PSCustomObject]@{ dependency='ACT-CA-BASELINE'; blockIfUnsatisfied=$false; reason='CA framework should be in place before PIM activation to enforce MFA on role activation' }
-            priority        = 2; category='CrossControl'; version='1.0.0'
+            condition       = [PSCustomObject]@{ fact='PIMEnabled'; operator='Equals'; value=$true }
+            effect          = [PSCustomObject]@{ dependency='ACT-PIM-CONFIGURE-ROLE-SETTINGS'; blockIfUnsatisfied=$false
+                                  reason='MFA enforcement for admins is stronger when PIM high-risk roles are already secured (CC-001)' }
+            priority        = 3; category='CrossDomain'; version='1.0.0'
         }
         [PSCustomObject]@{
             ruleId          = 'CC-002'
-            appliesToAction = 'ACT-DEV-ENFORCE-COMPLIANCE'
+            appliesToAction = 'ACT-CA-REQUIRE-COMPLIANT-DEVICE'
             type            = 'Dependency'
-            condition       = [PSCustomObject]@{ fact='CAFrameworkPresent'; operator='Equals'; value=$true }
-            effect          = [PSCustomObject]@{ dependency='ACT-CA-BASELINE'; blockIfUnsatisfied=$false; reason='Device compliance enforcement requires CA policies to gate access based on compliance state' }
-            priority        = 2; category='CrossControl'; version='1.0.0'
+            condition       = [PSCustomObject]@{ fact='DeviceCompliancePoliciesExist'; operator='Equals'; value=$true }
+            effect          = [PSCustomObject]@{ dependency='ACT-DEV-BASELINE-COMPLIANCE'; blockIfUnsatisfied=$true
+                                  reason='Device compliance CA condition requires at least one compliance policy to exist (CC-002)' }
+            priority        = 4; category='CrossDomain'; version='1.0.0'
         }
         [PSCustomObject]@{
             ruleId          = 'CC-003'
             appliesToAction = 'ACT-DLP-ENFORCE'
             type            = 'Dependency'
-            condition       = [PSCustomObject]@{ fact='CAFrameworkPresent'; operator='Equals'; value=$true }
-            effect          = [PSCustomObject]@{ dependency='ACT-CA-BASELINE'; blockIfUnsatisfied=$false; reason='DLP enforcement is more effective when CA controls are already limiting lateral movement' }
-            priority        = 1; category='CrossControl'; version='1.0.0'
+            condition       = [PSCustomObject]@{ fact='Always'; operator='Equals'; value=$true }
+            effect          = [PSCustomObject]@{ dependency='ACT-CA-IDENTITY-BASELINE'; blockIfUnsatisfied=$false
+                                  reason='DLP enforcement (Phase 4) must follow identity baseline (Phase 2) to ensure data access is identity-gated before data controls apply (CC-003)' }
+            priority        = 5; category='CrossDomain'; version='1.0.0'
         }
         [PSCustomObject]@{
             ruleId          = 'CC-004'
-            appliesToAction = 'ACT-CA-ENABLE-MFA'
+            appliesToAction = 'ACT-CA-BLOCK-ALL-EXTERNAL'
             type            = 'Block'
-            condition       = [PSCustomObject]@{ fact='BreakGlassAccountsPresent'; operator='Equals'; value=$false }
-            effect          = [PSCustomObject]@{ dependency=$null; blockIfUnsatisfied=$true; reason='Lockout protection: break-glass accounts must exist before any MFA enforcement policy is enabled' }
-            priority        = 15; category='CrossControl'; version='1.0.0'
+            condition       = [PSCustomObject]@{ fact='Always'; operator='Equals'; value=$true }
+            effect          = [PSCustomObject]@{ dependency=$null; blockIfUnsatisfied=$true
+                                  reason='ACT-CA-BLOCK-ALL-EXTERNAL blocked: EmergencyAccessTested fact not verified. Risk of complete tenant lockout (CC-004)' }
+            priority        = 10; category='CrossDomain'; version='1.0.0'
         }
     )
 }

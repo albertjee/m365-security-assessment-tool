@@ -4,18 +4,18 @@ $ErrorActionPreference = 'Stop'
 function Get-CheckMetadata {
     @{
         id                    = 'DLP-001'
-        title                 = 'Data Loss Prevention Policy Assessment'
+        title                 = 'Data Loss Prevention Assessment'
         category              = 'Data Protection'
         severity              = 'High'
-        riskScoreBaseline     = 75
+        riskScoreBaseline     = 78
         secureScoreVisibility = 'Passes'
-        description           = 'Evaluates DLP policy presence, simulation mode gaps, and coverage across Exchange, SharePoint, Teams. Simulation mode passes Secure Score but never enforces.'
+        description           = 'Evaluates DLP compliance policies across workloads. Identifies absent policies, simulation-mode-only coverage, and workload gaps. DLP policies in AuditAndNotify mode pass Secure Score but do not enforce.'
         requiredPermissions   = @('InformationProtectionPolicy.Read.All')
-        requiredExchangeRoles = @('View-Only DLP Compliance Management')
-        dataSource            = 'Both'
+        requiredExchangeRoles = @('Compliance Management')
+        dataSource            = 'Exchange'
         supportsRemediation   = $true
-        edition               = @('Lite','Premium')
-        assessAuthMethods     = @('Certificate','Delegated')
+        edition               = @('Lite', 'Premium')
+        assessAuthMethods     = @('Certificate', 'Delegated')
     }
 }
 
@@ -26,43 +26,84 @@ function Invoke-Check {
         [Parameter(Mandatory)] $Config
     )
 
-    $authMethod = $GraphGateway.AuthMethod
-    if ($authMethod -eq 'Secret') {
-        return @(New-Finding -CheckId 'DLP-001' -RunId $GraphGateway.RunId `
-            -Title 'DLP Assessment Skipped' -Category 'Data Protection' `
-            -Severity 'High' -RiskScore 75 -SecureScoreVisibility 'Passes' `
-            -Status 'NotAssessed' -GraphEndpoint '/beta/compliance/ediscovery/cases' `
-            -SupportsRemediation $false `
-            -Evidence @{ reason='ExchangeAuthNotSupported' } `
-            -ErrorMessage 'Exchange-backed checks require Certificate or Delegated auth')
-    }
-
     $runId    = $GraphGateway.RunId
     $findings = [System.Collections.Generic.List[object]]::new()
+    $exGw     = if ($Config -is [hashtable]) { $Config['ExchangeGateway'] } else { $Config.ExchangeGateway }
 
-    $policies = $null
-    try {
-        $resp     = Invoke-GraphRequest -GraphGateway $GraphGateway `
-                        -Uri '/beta/compliance/ediscovery/cases' -Method 'GET' -OperationType 'Read' -Caller 'Auditor'
-        $policies = $resp.Result.value
-    } catch {
-        $policies = @()
+    if ($GraphGateway.AuthMethod -eq 'Secret') {
+        $findings.Add((New-Finding -CheckId 'DLP-001' -RunId $runId `
+            -Title 'DLP Assessment Unavailable' `
+            -Category 'Data Protection' -Severity 'High' -RiskScore 78 `
+            -SecureScoreVisibility 'Passes' -Status 'NotAssessed' `
+            -Evidence @{} -GraphEndpoint 'Exchange:Get-DlpCompliancePolicy' -SupportsRemediation $false `
+            -ErrorMessage 'ExchangeAuthNotSupported'))
+        return $findings.ToArray()
     }
 
-    $policiesPresent  = @($policies).Count -gt 0
-    $simulationMode   = $false
+    $policies = @()
+    try {
+        $result   = Invoke-ExchangeRequest -ExchangeGateway $exGw `
+                        -CmdletName 'Get-DlpCompliancePolicy' -Parameters @{} `
+                        -OperationType 'Read' -Caller 'Auditor'
+        $policies = @($result.Result)
+    } catch {
+        $findings.Add((New-Finding -CheckId 'DLP-001' -RunId $runId `
+            -Title 'DLP Assessment Failed' `
+            -Category 'Data Protection' -Severity 'High' -RiskScore 78 `
+            -SecureScoreVisibility 'Passes' -Status 'NotAssessed' `
+            -Evidence @{} -GraphEndpoint 'Exchange:Get-DlpCompliancePolicy' -SupportsRemediation $false `
+            -ErrorMessage $_.Exception.Message))
+        return $findings.ToArray()
+    }
 
-    $status = if ($policiesPresent -and -not $simulationMode) { 'Pass' } else { 'Fail' }
+    $absentStatus = if ($policies.Count -gt 0) { 'Pass' } else { 'Fail' }
     $findings.Add((New-Finding -CheckId 'DLP-001' -RunId $runId `
-        -Title 'Data Loss Prevention Policies' -Category 'Data Protection' `
-        -Severity 'High' -RiskScore 75 -SecureScoreVisibility 'Passes' `
-        -Status $status `
-        -GraphEndpoint '/beta/compliance/ediscovery/cases' -SupportsRemediation $true `
+        -Title 'No DLP Compliance Policies Configured' `
+        -Category 'Data Protection' -Severity 'High' -RiskScore 78 `
+        -SecureScoreVisibility 'Passes' -Status $absentStatus `
         -Evidence @{
-            dlpPoliciesPresent = $policiesPresent
-            simulationMode     = $simulationMode
-            policyCount        = @($policies).Count
-        }))
+            policyCount        = $policies.Count
+            dlpPoliciesPresent = ($policies.Count -gt 0)
+        } `
+        -GraphEndpoint 'Exchange:Get-DlpCompliancePolicy' -SupportsRemediation $true))
+
+    if ($policies.Count -eq 0) { return $findings.ToArray() }
+
+    $enforcedPolicies   = @($policies | Where-Object { $_.Mode -eq 'Enable' })
+    $simulationPolicies = @($policies | Where-Object { $_.Mode -in @('AuditAndNotify', 'TestWithNotifications', 'Disable') })
+    $simStatus = if ($enforcedPolicies.Count -gt 0) { 'Pass' } else { 'Fail' }
+    $findings.Add((New-Finding -CheckId 'DLP-001' -RunId $runId `
+        -Title 'DLP Policies in Simulation Mode Only (Not Enforced)' `
+        -Category 'Data Protection' -Severity 'High' -RiskScore 72 `
+        -SecureScoreVisibility 'Passes' -Status $simStatus `
+        -Evidence @{
+            totalPolicies       = $policies.Count
+            enforcedCount       = $enforcedPolicies.Count
+            simulationModeCount = $simulationPolicies.Count
+            simulationNames     = @($simulationPolicies | Select-Object -ExpandProperty Name)
+        } `
+        -GraphEndpoint 'Exchange:Get-DlpCompliancePolicy' -SupportsRemediation $true))
+
+    $requiredWorkloads = @('Exchange', 'SharePoint', 'Teams')
+    $coveredWorkloads  = @()
+    foreach ($policy in $policies) {
+        if ($policy.PSObject.Properties['Workload'] -and $policy.Workload) {
+            $coveredWorkloads += $policy.Workload -split ','
+        }
+    }
+    $coveredWorkloads = @($coveredWorkloads | Select-Object -Unique)
+    $missingWorkloads = @($requiredWorkloads | Where-Object { $_ -notin $coveredWorkloads })
+    $coverageStatus   = if ($missingWorkloads.Count -eq 0) { 'Pass' } else { 'Fail' }
+    $findings.Add((New-Finding -CheckId 'DLP-001' -RunId $runId `
+        -Title 'DLP Policy Coverage Gaps Across Key Workloads' `
+        -Category 'Data Protection' -Severity 'High' -RiskScore 68 `
+        -SecureScoreVisibility 'Passes' -Status $coverageStatus `
+        -Evidence @{
+            requiredWorkloads = $requiredWorkloads
+            coveredWorkloads  = $coveredWorkloads
+            missingWorkloads  = $missingWorkloads
+        } `
+        -GraphEndpoint 'Exchange:Get-DlpCompliancePolicy' -SupportsRemediation $true))
 
     return $findings.ToArray()
 }

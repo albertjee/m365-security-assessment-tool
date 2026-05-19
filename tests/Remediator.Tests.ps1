@@ -2,9 +2,9 @@ BeforeAll {
     . "$PSScriptRoot/../src/Private/models/RemediationAction.schema.ps1"
     . "$PSScriptRoot/../src/Private/Remediator.ps1"
 
-    function Invoke-GraphRequest { param($Uri, $Method, $Body, $OperationType) throw 'Invoke-GraphRequest stub — must be mocked per test' }
+    function Invoke-GraphRequest { param($GraphGateway, $Uri, $Method, $Body, $OperationType, $Caller) throw 'Invoke-GraphRequest stub — must be mocked per test' }
     Remove-Alias -Name Invoke-GraphRequest -Force -ErrorAction SilentlyContinue
-    function Invoke-ExchangeRequest { param($CmdletName, $Parameters, $OperationType) throw 'Invoke-ExchangeRequest stub — must be mocked per test' }
+    function Invoke-ExchangeRequest { param($CmdletName, $Parameters, $OperationType, $Caller) throw 'Invoke-ExchangeRequest stub — must be mocked per test' }
 
     function New-MockGraphGateway {
         [PSCustomObject]@{ PSTypeName='Metis.GraphGateway'; AuthMethod='Delegated'; Connected=$true; RunId='run-001' }

@@ -64,6 +64,11 @@ function Start-AssessmentPipeline {
 
             $log = Invoke-Executor -Plan $plan -Actions $annotated -Context $context -GraphGateway $null
             Write-SequencePlanJson -Plan $plan -OutputFolder $runFolder | Out-Null
+
+            $jsonlPath = Join-Path $runFolder 'remediation.actions.jsonl'
+            foreach ($entry in $log) {
+                ($entry | ConvertTo-Json -Compress -Depth 5) | Add-Content -Path $jsonlPath -Encoding UTF8
+            }
         }
     }
 
