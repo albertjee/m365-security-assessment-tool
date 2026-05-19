@@ -128,11 +128,16 @@ function Start-AssessmentPipeline {
                 if ($p) { [void]$requiredPerms.Add($p) }
             }
         }
-        $ctx           = Get-MgContext
-        $grantedScopes = @($ctx.Scopes)
-        $permCheck     = Test-GraphPermissions -RequiredPermissions @($requiredPerms) -GrantedScopes $grantedScopes
-        if (-not $permCheck.IsValid) {
-            throw "Missing required Graph permissions: $($permCheck.Missing -join ', ')"
+        # App-only (Secret/ClientCredentials) uses Application permissions granted at Entra level,
+        # not delegated scopes — Get-MgContext.Scopes will be empty. Skip scope check; rely on
+        # admin consent having been granted during app registration.
+        if ($authMethod -ne 'Secret') {
+            $ctx           = Get-MgContext
+            $grantedScopes = @($ctx.Scopes)
+            $permCheck     = Test-GraphPermissions -RequiredPermissions @($requiredPerms) -GrantedScopes $grantedScopes
+            if (-not $permCheck.IsValid) {
+                throw "Missing required Graph permissions: $($permCheck.Missing -join ', ')"
+            }
         }
 
         # 8) Build Config for audit

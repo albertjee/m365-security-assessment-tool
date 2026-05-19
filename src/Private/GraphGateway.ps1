@@ -80,8 +80,14 @@ function Connect-GraphGateway {
         default { throw "Unsupported AuthMethod: $($GraphGateway.AuthMethod)" }
     }
 
+    # Microsoft.Graph.Authentication registers an 'Invoke-GraphRequest' alias in Global scope
+    # that shadows our function of the same name. Remove it so our write-gated wrapper wins.
+    Remove-Alias -Name Invoke-GraphRequest -Scope Global -Force -ErrorAction SilentlyContinue
+
     $GraphGateway.Connected   = $true
-    $GraphGateway.AccessToken = (Get-MgContext).AccessToken
+    # SDK v2 AuthContext does not expose AccessToken as a property; fall back to $null
+    # (Test-TenantPin uses Get-TenantIdFromOrganization as fallback when token is unavailable)
+    try { $GraphGateway.AccessToken = (Get-MgContext).AccessToken } catch { $GraphGateway.AccessToken = $null }
     return $GraphGateway
 }
 
@@ -128,7 +134,12 @@ function Invoke-GraphRequest {
     $allValues = [System.Collections.Generic.List[object]]::new()
     $response = $null
 
-    $currentUri = $Uri
+    # Invoke-MgGraphRequest prepends the base URL but not the API version.
+    # Normalize relative URIs that lack a version segment.
+    $currentUri = if ($Uri -notmatch '^https?://' -and $Uri -notmatch '^/v\d') {
+        '/v1.0' + $Uri
+    } else { $Uri }
+
     while ($currentUri) {
         $attempt++
         try {
