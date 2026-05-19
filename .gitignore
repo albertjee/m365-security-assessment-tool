@@ -2,3 +2,20 @@ Output/
 config/assessment.secrets.psd1
 *.pfx
 *.p12
+*.zip
+*.pdf
+m365-security-assessment-tool/
+
+# Working-session review/draft docs
+Inital__Software_review_*.md
+Implment plan review*.md
+Design Spec Review*.md
+Dependency Rule Library*.md
+Prod Strategy*.md
+Remediation Sequencing Engine*.md
+Check-ConditionalAccess.md
+Check-PIM*.md
+Check-PIM*.MD
+Add ExchangeGateway*.md
+sample pipeline run validation*.md
+Sample_Baseline_ExchangeGateway.ps1
