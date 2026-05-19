@@ -1,6 +1,51 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Invoke-ExecutorRevalidation {
+    [CmdletBinding()]
+    param(
+        $GraphGateway,
+        [string] $TenantId,
+        $Findings
+    )
+
+    $failures = [System.Collections.Generic.List[string]]::new()
+
+    if ($GraphGateway -and -not [string]::IsNullOrWhiteSpace($TenantId)) {
+        try {
+            $pin = Test-TenantPin -RequestedTenantId $TenantId -GraphGateway $GraphGateway
+            if (-not $pin.Match) {
+                $failures.Add("TenantPinMismatch: $($pin.MismatchReason)")
+            }
+        } catch {
+            $failures.Add("TenantPinRevalidationError: $($_.Exception.Message)")
+        }
+    }
+
+    if ($Findings -and @($Findings).Count -gt 0) {
+        try {
+            if (-not (Get-FactValue -FactName 'BreakGlassAccountsPresent' -Findings $Findings)) {
+                $failures.Add('BreakGlassAccountsNotPresent')
+            }
+        } catch {
+            $failures.Add("BreakGlassRevalidationError: $($_.Exception.Message)")
+        }
+
+        try {
+            if (-not (Get-FactValue -FactName 'CAFrameworkPresent' -Findings $Findings)) {
+                $failures.Add('CABaselineMissing')
+            }
+        } catch {
+            $failures.Add("CARevalidationError: $($_.Exception.Message)")
+        }
+    }
+
+    return [PSCustomObject]@{
+        Passed   = ($failures.Count -eq 0)
+        Failures = $failures.ToArray()
+    }
+}
+
 function Invoke-Executor {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
     param(
@@ -8,7 +53,9 @@ function Invoke-Executor {
         [Parameter(Mandatory)] $Actions,
         [Parameter(Mandatory)] $Context,
         [Parameter(Mandatory)] $GraphGateway,
-        $ExchangeGateway = $null
+        $ExchangeGateway = $null,
+        $Findings        = @(),
+        [string] $TenantId = ''
     )
 
     $recomputedPlan = New-SequencePlan -Actions $Actions -RulesVersion $Plan.rulesVersion
@@ -21,9 +68,31 @@ function Invoke-Executor {
     $actionMap = @{}
     foreach ($a in $Actions) { $actionMap[$a.action.actionId] = $a }
 
-    $executionLog = [System.Collections.Generic.List[object]]::new()
+    $globalWhatIf = $Context.WhatIf -eq $true -or $Context.Mode -ne 'Remediate'
+    $writeAllowed = (
+        $Context.Mode       -eq 'Remediate' -and
+        $Context.AuthMethod -eq 'Delegated' -and
+        $Context.WhatIf     -ne $true       -and
+        $Context.Edition    -eq 'Premium'
+    )
+
+    $executionLog       = [System.Collections.Generic.List[object]]::new()
+    $revalidationDone   = $false
+    $revalidationPassed = $true
+    $revalidationReason = ''
 
     foreach ($phase in ($Plan.phases | Sort-Object phaseNumber)) {
+
+        # Run revalidation once before first Phase 2+ action in live-execute mode
+        if ($phase.phaseNumber -ge 2 -and -not $revalidationDone -and $writeAllowed) {
+            $revalidationDone = $true
+            $rv = Invoke-ExecutorRevalidation -GraphGateway $GraphGateway -TenantId $TenantId -Findings $Findings
+            $revalidationPassed = $rv.Passed
+            if (-not $rv.Passed) {
+                $revalidationReason = $rv.Failures -join '; '
+            }
+        }
+
         foreach ($entry in ($phase.actions | Sort-Object order)) {
             $action  = $actionMap[$entry.actionId]
             $blocked = $entry.status -eq 'Blocked'
@@ -39,9 +108,18 @@ function Invoke-Executor {
                 continue
             }
 
-            $whatIf = $Context.WhatIf -eq $true -or $Context.Mode -ne 'Remediate'
+            if ($phase.phaseNumber -ge 2 -and -not $revalidationPassed) {
+                $executionLog.Add([PSCustomObject]@{
+                    actionId = $entry.actionId
+                    phase    = $phase.phaseNumber
+                    order    = $entry.order
+                    outcome  = 'RevalidationFailed'
+                    reason   = $revalidationReason
+                })
+                continue
+            }
 
-            if ($whatIf) {
+            if ($globalWhatIf) {
                 $executionLog.Add([PSCustomObject]@{
                     actionId = $entry.actionId
                     phase    = $phase.phaseNumber
@@ -51,13 +129,6 @@ function Invoke-Executor {
                 })
                 continue
             }
-
-            $writeAllowed = (
-                $Context.Mode       -eq 'Remediate' -and
-                $Context.AuthMethod -eq 'Delegated' -and
-                $Context.WhatIf     -ne $true -and
-                $Context.Edition    -eq 'Premium'
-            )
 
             if (-not $writeAllowed) {
                 $executionLog.Add([PSCustomObject]@{

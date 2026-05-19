@@ -39,6 +39,47 @@ function Get-FactValue {
     return [bool]$rawValue
 }
 
+function Test-EvidenceContract {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] $Findings
+    )
+
+    $violations = [System.Collections.Generic.List[object]]::new()
+
+    foreach ($factName in $script:FactMap.Keys) {
+        $mapping = $script:FactMap[$factName]
+        if ($null -eq $mapping) { continue }
+
+        $finding = $Findings | Where-Object { $_.checkId -eq $mapping.checkId } | Select-Object -First 1
+        if (-not $finding) { continue }
+        if ($finding.status -eq 'NotAssessed') { continue }
+
+        $evidence = $finding.evidence
+        $keyExists = if ($evidence -is [hashtable]) {
+            $evidence.ContainsKey($mapping.evidenceKey)
+        } elseif ($null -ne $evidence) {
+            $null -ne $evidence.PSObject.Properties[$mapping.evidenceKey]
+        } else {
+            $false
+        }
+
+        if (-not $keyExists) {
+            $violations.Add([PSCustomObject]@{
+                factName    = $factName
+                checkId     = $mapping.checkId
+                evidenceKey = $mapping.evidenceKey
+                reason      = "Missing evidence key '$($mapping.evidenceKey)' for fact '$factName'"
+            })
+        }
+    }
+
+    return [PSCustomObject]@{
+        IsValid    = ($violations.Count -eq 0)
+        Violations = $violations.ToArray()
+    }
+}
+
 function Test-RuleCondition {
     [CmdletBinding()]
     param(
@@ -78,6 +119,13 @@ function Invoke-DependencyRules {
     )
 
     $typePriority = @{ Block=10; Dependency=5; Conflict=3; Advisory=1 }
+
+    $ec = Test-EvidenceContract -Findings $Findings
+    if (-not $ec.IsValid) {
+        foreach ($v in $ec.Violations) {
+            Write-Warning "EvidenceContract: $($v.reason)"
+        }
+    }
 
     foreach ($action in $Actions) {
         $actionId      = $action.action.actionId

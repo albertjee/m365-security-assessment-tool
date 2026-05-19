@@ -67,7 +67,11 @@ function Connect-GraphGateway {
         'Secret' {
             $secret = $GraphGateway.ClientSecret
             if (-not $secret) { throw "AuthMethod=Secret requires ClientSecret." }
-            $connectParams['ClientSecretCredential'] = [System.Net.NetworkCredential]::new('', $secret).SecurePassword
+            $secureSecret = [System.Net.NetworkCredential]::new('', $secret).SecurePassword
+            $connectParams['ClientSecretCredential'] = New-Object System.Management.Automation.PSCredential(
+                $GraphGateway.AppId, $secureSecret
+            )
+            $connectParams.Remove('ClientId')
             Connect-MgGraph @connectParams | Out-Null
         }
         'Delegated' {

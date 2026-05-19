@@ -72,6 +72,11 @@ function Start-AssessmentPipeline {
         }
     }
 
+    $gitCommit = try {
+        $out = & git rev-parse --short HEAD 2>&1
+        if ($LASTEXITCODE -eq 0 -and $out) { "$out".Trim() } else { 'unknown' }
+    } catch { 'unknown' }
+
     $manifest = [PSCustomObject]@{
         runId      = $runId
         tenantId   = ($tenantId -replace '(?<=.{4}).(?=.{4})', '*')
@@ -82,6 +87,7 @@ function Start-AssessmentPipeline {
         timestamp  = [System.DateTime]::UtcNow.ToString('o')
         status     = 'Complete'
         findings   = @($findings).Count
+        gitCommit  = $gitCommit
     }
     Write-RunManifest -Manifest $manifest -OutputFolder $runFolder | Out-Null
 

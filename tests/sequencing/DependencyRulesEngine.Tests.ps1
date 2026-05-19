@@ -154,6 +154,36 @@ Describe 'Get-FactValue — PIM facts resolve from PIM-001 evidence' {
     }
 }
 
+Describe 'Test-EvidenceContract' {
+    It 'returns IsValid=true when present finding has all required evidence keys' {
+        $findings = @(
+            [PSCustomObject]@{ checkId='CA-001'; status='Pass'; evidence=@{ breakGlassFound=$true; totalPolicies=5 } }
+        )
+        $result = Test-EvidenceContract -Findings $findings
+        $result.IsValid           | Should -BeTrue
+        $result.Violations.Count  | Should -Be 0
+    }
+
+    It 'returns violation when a non-NotAssessed finding is missing a required evidence key' {
+        $findings = @(
+            [PSCustomObject]@{ checkId='CA-001'; status='Fail'; evidence=@{ totalPolicies=0 } }
+        )
+        $result = Test-EvidenceContract -Findings $findings
+        $result.IsValid | Should -BeFalse
+        ($result.Violations | Where-Object { $_.factName -eq 'BreakGlassAccountsPresent' }) |
+            Should -Not -BeNullOrEmpty
+    }
+
+    It 'does not flag NotAssessed findings even when evidence keys are absent' {
+        $findings = @(
+            [PSCustomObject]@{ checkId='CA-001'; status='NotAssessed'; evidence=@{} }
+        )
+        $result = Test-EvidenceContract -Findings $findings
+        $result.IsValid          | Should -BeTrue
+        $result.Violations.Count | Should -Be 0
+    }
+}
+
 Describe 'Invoke-DependencyRules — unknown fact defaults false' {
     It 'Block condition with unknown fact = false -> condition NOT satisfied -> not blocked' {
         $action = New-TestAction 'ACT-TEST'

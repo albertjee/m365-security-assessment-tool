@@ -31,6 +31,31 @@ Describe 'Invoke-GraphRequest — write gate' {
     }
 }
 
+Describe 'Connect-GraphGateway — Secret auth PSCredential binding' {
+    BeforeAll {
+        Mock Connect-MgGraph { }
+        Mock Get-MgContext { [PSCustomObject]@{ AccessToken = 'fake-token' } }
+    }
+
+    It 'passes PSCredential (not bare SecureString) to Connect-MgGraph for Secret auth' {
+        $gw = New-GraphGateway -TenantId 'tid' -AppId 'my-app-id' -AuthMethod 'Secret' `
+                               -ClientSecret 'my-secret' -RunId 'r1' -RunFolder 'C:\tmp'
+        Connect-GraphGateway -GraphGateway $gw
+        Should -Invoke Connect-MgGraph -Times 1 -ParameterFilter {
+            $ClientSecretCredential -is [System.Management.Automation.PSCredential]
+        }
+    }
+
+    It 'uses AppId as PSCredential UserName for Secret auth' {
+        $gw = New-GraphGateway -TenantId 'tid' -AppId 'my-app-id' -AuthMethod 'Secret' `
+                               -ClientSecret 'my-secret' -RunId 'r1' -RunFolder 'C:\tmp'
+        Connect-GraphGateway -GraphGateway $gw
+        Should -Invoke Connect-MgGraph -Times 1 -ParameterFilter {
+            $ClientSecretCredential.UserName -eq 'my-app-id'
+        }
+    }
+}
+
 Describe 'Invoke-GraphRequest — pagination' {
     BeforeAll {
         $script:paginationGw = New-GraphGateway -TenantId 'tid' -AppId 'aid' -AuthMethod 'Certificate' -RunId 'r1' -RunFolder 'C:\tmp'

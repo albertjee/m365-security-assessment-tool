@@ -19,6 +19,7 @@ BeforeAll {
     }
 
     function Invoke-Remediator { throw 'Invoke-Remediator stub — must be mocked per test' }
+    function Test-TenantPin   { throw 'Test-TenantPin stub — must be mocked per test' }
 }
 
 Describe 'Invoke-Executor — plan integrity guard' {
@@ -130,6 +131,70 @@ Describe 'Invoke-Executor — execution log structure' {
         $log[0].outcome  | Should -Not -BeNullOrEmpty
         $log[0].phase    | Should -Not -BeNullOrEmpty
         $log[0].order    | Should -BeGreaterThan 0
+    }
+}
+
+Describe 'Invoke-Executor — pre-execution revalidation' {
+    BeforeAll {
+        $script:liveContext = [PSCustomObject]@{
+            Mode       = 'Remediate'
+            AuthMethod = 'Delegated'
+            WhatIf     = $false
+            Edition    = 'Premium'
+        }
+        $script:badFindings = @(
+            [PSCustomObject]@{ checkId='CA-001'; status='Fail'; evidence=@{ breakGlassFound=$false; totalPolicies=0 } }
+        )
+        $script:goodFindings = @(
+            [PSCustomObject]@{ checkId='CA-001'; status='Pass'; evidence=@{ breakGlassFound=$true; totalPolicies=5 } }
+        )
+    }
+
+    It 'does not invoke Test-TenantPin in WhatIf mode' {
+        $actions = @(New-ExecAction 'ACT-A' -Phase 2)
+        $plan    = New-SequencePlan -Actions $actions -RulesVersion '1.0.0'
+        $context = [PSCustomObject]@{ Mode='WhatIf'; AuthMethod='Certificate'; WhatIf=$true; Edition='Lite' }
+
+        Mock Test-TenantPin { throw 'should not be called' }
+
+        $log = Invoke-Executor -Plan $plan -Actions $actions -Context $context -GraphGateway (New-MockGateway)
+        Should -Invoke Test-TenantPin -Times 0
+        $log[0].outcome | Should -Be 'WhatIf'
+    }
+
+    It 'records RevalidationFailed when tenant pin check fails' {
+        $actions = @(New-ExecAction 'ACT-A' -Phase 2)
+        $plan    = New-SequencePlan -Actions $actions -RulesVersion '1.0.0'
+
+        Mock Test-TenantPin { [PSCustomObject]@{ Match=$false; MismatchReason='TokenTenantMismatch' } }
+
+        $log = Invoke-Executor -Plan $plan -Actions $actions -Context $script:liveContext `
+                               -GraphGateway (New-MockGateway) -TenantId 'test-tenant' -Findings @()
+        $log[0].outcome | Should -Be 'RevalidationFailed'
+        $log[0].reason  | Should -Match 'TenantPinMismatch'
+    }
+
+    It 'records RevalidationFailed when critical security facts are missing' {
+        $actions = @(New-ExecAction 'ACT-A' -Phase 2)
+        $plan    = New-SequencePlan -Actions $actions -RulesVersion '1.0.0'
+
+        $log = Invoke-Executor -Plan $plan -Actions $actions -Context $script:liveContext `
+                               -GraphGateway (New-MockGateway) -Findings $script:badFindings
+        $log[0].outcome | Should -Be 'RevalidationFailed'
+        $log[0].reason  | Should -Match 'BreakGlassAccountsNotPresent'
+    }
+
+    It 'executes Phase 2 actions when revalidation passes' {
+        $actions = @(New-ExecAction 'ACT-A' -Phase 2)
+        $plan    = New-SequencePlan -Actions $actions -RulesVersion '1.0.0'
+
+        Mock Invoke-Remediator { [PSCustomObject]@{ success=$true } }
+
+        $log = Invoke-Executor -Plan $plan -Actions $actions -Context $script:liveContext `
+                               -GraphGateway (New-MockGateway) -Findings $script:goodFindings `
+                               -Confirm:$false
+        $log[0].outcome | Should -Be 'Executed'
+        Should -Invoke Invoke-Remediator -Times 1
     }
 }
 
