@@ -11,7 +11,11 @@ $script:WriteCallPatterns = @(
     'OperationType\s*[=,]\s*[''"]Write',
     'Invoke-GraphRequest.*-Method\s+(POST|PATCH|PUT|DELETE)',
     'Invoke-ExchangeRequest.*-OperationType\s+Write',
-    '\b(Set|New|Remove|Enable|Disable)-(Mg|Az|AzureAD|EXO|SPO|MSol)\w+\b'
+    '\bSet-\w+\b',
+    '\bNew-(?!Finding\b)\w+\b',
+    '\bRemove-\w+\b',
+    '\bEnable-\w+\b',
+    '\bDisable-\w+\b'
 )
 
 function Test-CheckContract {

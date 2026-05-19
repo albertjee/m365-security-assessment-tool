@@ -14,7 +14,7 @@ function Test-Environment {
 
     $psVer = Get-PSVersion
     if ($psVer -lt [Version]'7.2') {
-        $failures.Add("PowerShell 7.2+ required")
+        $failures.Add("PowerShell 7.2+ required. Found: $psVer")
     }
 
     if ($RequireExchange) {

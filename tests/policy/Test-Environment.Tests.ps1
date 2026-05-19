@@ -9,7 +9,12 @@ Describe 'Test-Environment' {
         Mock Get-PSVersion { [Version]'7.1.0' }
         $result = Test-Environment -AuthMethod 'Certificate' -RequireExchange $false
         $result.IsValid | Should -BeFalse
-        $result.Failures | Should -Contain 'PowerShell 7.2+ required'
+        $result.Failures | Should -Match 'PowerShell 7\.2\+ required'
+    }
+    It 'failure message includes the found version when PS below 7.2' {
+        Mock Get-PSVersion { [Version]'7.1.0' }
+        $result = Test-Environment -AuthMethod 'Certificate' -RequireExchange $false
+        $result.Failures | Should -Match '7\.1\.0'
     }
     It 'IsValid=false when ExchangeOnlineManagement missing and RequireExchange=true' {
         Mock Get-Module { $null } -ParameterFilter { $Name -eq 'ExchangeOnlineManagement' }

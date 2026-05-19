@@ -116,6 +116,44 @@ Describe 'Invoke-DependencyRules — rule precedence' {
     }
 }
 
+Describe 'Get-FactValue — PIM facts resolve from PIM-001 evidence' {
+    It 'PIMConversionComplete returns true when pimConversionComplete=true in PIM-001 evidence' {
+        $findings = @(
+            [PSCustomObject]@{ checkId='PIM-001'; status='Pass'; evidence=@{ pimConversionComplete=$true } }
+        )
+        Get-FactValue -FactName 'PIMConversionComplete' -Findings $findings | Should -BeTrue
+    }
+
+    It 'PIMConversionComplete returns false when pimConversionComplete=false in PIM-001 evidence' {
+        $findings = @(
+            [PSCustomObject]@{ checkId='PIM-001'; status='Pass'; evidence=@{ pimConversionComplete=$false } }
+        )
+        Get-FactValue -FactName 'PIMConversionComplete' -Findings $findings | Should -BeFalse
+    }
+
+    It 'ApprovalWorkflowConfigured returns true when approvalWorkflowConfigured=true in PIM-001 evidence' {
+        $findings = @(
+            [PSCustomObject]@{ checkId='PIM-001'; status='Pass'; evidence=@{ approvalWorkflowConfigured=$true } }
+        )
+        Get-FactValue -FactName 'ApprovalWorkflowConfigured' -Findings $findings | Should -BeTrue
+    }
+
+    It 'ApprovalWorkflowConfigured returns false when approvalWorkflowConfigured=false in PIM-001 evidence' {
+        $findings = @(
+            [PSCustomObject]@{ checkId='PIM-001'; status='Pass'; evidence=@{ approvalWorkflowConfigured=$false } }
+        )
+        Get-FactValue -FactName 'ApprovalWorkflowConfigured' -Findings $findings | Should -BeFalse
+    }
+
+    It 'PIMConversionComplete returns false when PIM-001 finding absent' {
+        Get-FactValue -FactName 'PIMConversionComplete' -Findings @() | Should -BeFalse
+    }
+
+    It 'ApprovalWorkflowConfigured returns false when PIM-001 finding absent' {
+        Get-FactValue -FactName 'ApprovalWorkflowConfigured' -Findings @() | Should -BeFalse
+    }
+}
+
 Describe 'Invoke-DependencyRules — unknown fact defaults false' {
     It 'Block condition with unknown fact = false -> condition NOT satisfied -> not blocked' {
         $action = New-TestAction 'ACT-TEST'

@@ -62,8 +62,32 @@ Describe 'Invoke-Check — PIM not enabled' {
         $gw = New-MockGateway
         Mock Invoke-GraphRequest { [PSCustomObject]@{ Result = @{ value = @() } } }
         $findings = Invoke-Check -GraphGateway $gw -Config @{}
-        $pimFinding = $findings | Where-Object { $_.title -match 'PIM' -or $_.title -match 'Just.In.Time' }
+        $pimFinding = $findings | Where-Object { $_.title -match 'JIT' }
         $pimFinding | Should -Not -BeNullOrEmpty
+    }
+
+    It 'JIT finding title is exactly "Privileged Identity Management (JIT) Not in Use"' {
+        $gw = New-MockGateway
+        Mock Invoke-GraphRequest { [PSCustomObject]@{ Result = @{ value = @() } } }
+        $findings = Invoke-Check -GraphGateway $gw -Config @{}
+        $pimFinding = $findings | Where-Object { $_.title -match 'JIT' }
+        $pimFinding.title | Should -Be 'Privileged Identity Management (JIT) Not in Use'
+    }
+
+    It 'JIT finding evidence includes pimConversionComplete key' {
+        $gw = New-MockGateway
+        Mock Invoke-GraphRequest { [PSCustomObject]@{ Result = @{ value = @() } } }
+        $findings = Invoke-Check -GraphGateway $gw -Config @{}
+        $pimFinding = $findings | Where-Object { $_.title -match 'JIT' }
+        $pimFinding.evidence.Keys | Should -Contain 'pimConversionComplete'
+    }
+
+    It 'JIT finding evidence includes approvalWorkflowConfigured key' {
+        $gw = New-MockGateway
+        Mock Invoke-GraphRequest { [PSCustomObject]@{ Result = @{ value = @() } } }
+        $findings = Invoke-Check -GraphGateway $gw -Config @{}
+        $pimFinding = $findings | Where-Object { $_.title -match 'JIT' }
+        $pimFinding.evidence.Keys | Should -Contain 'approvalWorkflowConfigured'
     }
 }
 

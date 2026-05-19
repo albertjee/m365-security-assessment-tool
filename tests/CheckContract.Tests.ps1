@@ -59,6 +59,54 @@ function Invoke-Check { param($GraphGateway,$Config) Invoke-GraphRequest -Method
     }
 }
 
+Describe 'Test-CheckContract — generic cmdlet write call detected' {
+    BeforeAll {
+        $badSet = @'
+function Get-CheckMetadata { @{ id='X-001';title='t';category='c';severity='High';riskScoreBaseline=70;secureScoreVisibility='Passes';description='d';requiredPermissions=@();requiredExchangeRoles=@();dataSource='Graph';supportsRemediation=$false;edition=@('Lite');assessAuthMethods=@('Certificate') } }
+function Invoke-Check { param($GraphGateway,$Config) Set-CustomCompliancePolicy -Id 'foo'; @() }
+'@
+        $badNew = @'
+function Get-CheckMetadata { @{ id='X-002';title='t';category='c';severity='High';riskScoreBaseline=70;secureScoreVisibility='Passes';description='d';requiredPermissions=@();requiredExchangeRoles=@();dataSource='Graph';supportsRemediation=$false;edition=@('Lite');assessAuthMethods=@('Certificate') } }
+function Invoke-Check { param($GraphGateway,$Config) New-MgUser -DisplayName 'bad'; @() }
+'@
+        $script:tmpBad4 = [System.IO.Path]::GetTempFileName() + '.ps1'
+        $script:tmpBad5 = [System.IO.Path]::GetTempFileName() + '.ps1'
+        Set-Content -Path $script:tmpBad4 -Value $badSet
+        Set-Content -Path $script:tmpBad5 -Value $badNew
+    }
+    AfterAll {
+        Remove-Item $script:tmpBad4 -ErrorAction SilentlyContinue
+        Remove-Item $script:tmpBad5 -ErrorAction SilentlyContinue
+    }
+
+    It 'IsValid=false when Invoke-Check calls a generic Set-* cmdlet' {
+        $result = Test-CheckContract -ModulePath $script:tmpBad4
+        $result.IsValid | Should -BeFalse
+        $result.Violations | Should -Match 'write.*Invoke-Check'
+    }
+
+    It 'IsValid=false when Invoke-Check calls a generic New-* (non-Finding) cmdlet' {
+        $result = Test-CheckContract -ModulePath $script:tmpBad5
+        $result.IsValid | Should -BeFalse
+        $result.Violations | Should -Match 'write.*Invoke-Check'
+    }
+
+    It 'IsValid=true when Invoke-Check calls only New-Finding (not a write operation)' {
+        $onlyNewFinding = @'
+function Get-CheckMetadata { @{ id='NF-001';title='t';category='c';severity='High';riskScoreBaseline=70;secureScoreVisibility='Passes';description='d';requiredPermissions=@();requiredExchangeRoles=@();dataSource='Graph';supportsRemediation=$false;edition=@('Lite');assessAuthMethods=@('Certificate') } }
+function Invoke-Check { param($GraphGateway,$Config) @(New-Finding -CheckId 'NF-001' -RunId 'r1' -Title 't' -Category 'c' -Severity 'High' -RiskScore 70 -SecureScoreVisibility 'Passes' -Status 'Pass' -GraphEndpoint '/test' -SupportsRemediation $false) }
+'@
+        $tmpNF = [System.IO.Path]::GetTempFileName() + '.ps1'
+        Set-Content -Path $tmpNF -Value $onlyNewFinding
+        try {
+            $result = Test-CheckContract -ModulePath $tmpNF
+            $result.IsValid | Should -BeTrue -Because 'New-Finding is an internal result builder, not a write call'
+        } finally {
+            Remove-Item $tmpNF -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Describe 'Test-CheckContract — missing required metadata fields' {
     BeforeAll {
         $bad = "function Get-CheckMetadata { @{ id='CA-001' } }`nfunction Invoke-Check { param(`$GraphGateway,`$Config) @() }"

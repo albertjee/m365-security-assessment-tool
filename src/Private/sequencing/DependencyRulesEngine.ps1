@@ -9,6 +9,8 @@ $script:FactMap = @{
     AuditLoggingEnabled           = @{ checkId='AUDIT-001'; evidenceKey='auditLoggingEnabled' }
     SensitivityLabelsDefined      = @{ checkId='LABEL-001'; evidenceKey='labelsDefined' }
     DeviceCompliancePoliciesExist = @{ checkId='DEV-001';   evidenceKey='compliancePoliciesExist' }
+    PIMConversionComplete         = @{ checkId='PIM-001';   evidenceKey='pimConversionComplete' }
+    ApprovalWorkflowConfigured    = @{ checkId='PIM-001';   evidenceKey='approvalWorkflowConfigured' }
     Always                        = $null
 }
 

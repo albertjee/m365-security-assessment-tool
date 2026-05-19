@@ -85,12 +85,14 @@ function Invoke-Check {
     $pimInUse  = $eligibleSchedules.Count -gt 0
     $pimStatus = if ($pimInUse) { 'Pass' } else { 'Fail' }
     $findings.Add((New-Finding -CheckId 'PIM-001' -RunId $runId `
-        -Title 'PIM Just-In-Time Access Not in Use' `
+        -Title 'Privileged Identity Management (JIT) Not in Use' `
         -Category 'Privileged Access' -Severity 'Critical' -RiskScore 90 `
         -SecureScoreVisibility 'NotFlagged' -Status $pimStatus `
         -Evidence @{
-            eligibleScheduleCount = $eligibleSchedules.Count
-            pimEnabled            = $pimInUse
+            eligibleScheduleCount      = $eligibleSchedules.Count
+            pimEnabled                 = $pimInUse
+            pimConversionComplete      = $false
+            approvalWorkflowConfigured = $false
         } `
         -GraphEndpoint '/roleManagement/directory/roleEligibilitySchedules' `
         -SupportsRemediation $true))

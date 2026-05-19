@@ -21,6 +21,35 @@ BeforeAll {
 
 AfterAll { Remove-Item $script:tmpDir -Recurse -Force -ErrorAction SilentlyContinue }
 
+Describe 'Template dependency — Get-ReportHtmlTemplate' {
+    It 'Get-ReportHtmlTemplate is defined in templates/report.html.ps1' {
+        . "$PSScriptRoot/../templates/report.html.ps1"
+        Get-Command -Name 'Get-ReportHtmlTemplate' -ErrorAction SilentlyContinue | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Get-ReportHtmlTemplate accepts Findings and Metadata parameters' {
+        . "$PSScriptRoot/../templates/report.html.ps1"
+        $cmd = Get-Command -Name 'Get-ReportHtmlTemplate'
+        $cmd.Parameters.Keys | Should -Contain 'Findings'
+        $cmd.Parameters.Keys | Should -Contain 'Metadata'
+    }
+
+    It 'Write-HtmlReport calls Get-ReportHtmlTemplate (fails without it loaded)' {
+        # Simulate loading only Reporter.ps1 (not template) in a child scope
+        $result = & {
+            . "$PSScriptRoot/../src/Private/models/Finding.schema.ps1"
+            . "$PSScriptRoot/../src/Private/Reporter.ps1"
+            try {
+                Write-HtmlReport -Findings @() -Metadata @{} -OutputFolder ([System.IO.Path]::GetTempPath())
+                'no-error'
+            } catch {
+                'error'
+            }
+        }
+        $result | Should -Be 'error'
+    }
+}
+
 Describe 'Write-FindingsJson' {
     It 'writes valid JSON array to findings.json' {
         $path = Write-FindingsJson -Findings @($script:sampleFinding) -OutputFolder $script:tmpDir
