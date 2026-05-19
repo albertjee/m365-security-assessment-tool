@@ -54,6 +54,19 @@ function Append-RemediationActionLog {
     Add-Content -Path $LogPath -Value $line -Encoding UTF8
 }
 
+function Write-HtmlReport {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] $Findings,
+        [Parameter(Mandatory)] [hashtable] $Metadata,
+        [Parameter(Mandatory)] [string] $OutputFolder
+    )
+    $html = Get-ReportHtmlTemplate -Findings $Findings -Metadata $Metadata
+    $path = Join-Path $OutputFolder 'report.html'
+    $html | Set-Content -Path $path -Encoding UTF8
+    return $path
+}
+
 function Write-SequencePlanJson {
     [CmdletBinding()]
     param(

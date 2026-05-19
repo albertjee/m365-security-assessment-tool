@@ -74,3 +74,67 @@ Describe 'Get-Sha256' {
         $hash | Should -Match '^sha256:[a-f0-9]{64}$'
     }
 }
+
+Describe 'Write-HtmlReport' {
+    BeforeAll {
+        . "$PSScriptRoot/../src/Private/models/Finding.schema.ps1"
+        . "$PSScriptRoot/../templates/report.html.ps1"
+
+        $script:htmlFindings = @(
+            (New-Finding -CheckId 'CA-001' -RunId 'r1' -Title 'Legacy Auth' -Category 'Identity' `
+                -Severity 'Critical' -RiskScore 95 -SecureScoreVisibility 'Passes' `
+                -Status 'Fail' -GraphEndpoint '/test' -SupportsRemediation $true),
+            (New-Finding -CheckId 'PIM-001' -RunId 'r1' -Title 'PIM Not Used' -Category 'Privileged Access' `
+                -Severity 'High' -RiskScore 80 -SecureScoreVisibility 'NotFlagged' `
+                -Status 'Fail' -GraphEndpoint '/test' -SupportsRemediation $true),
+            (New-Finding -CheckId 'LA-001' -RunId 'r1' -Title 'Legacy Blocked' -Category 'Identity' `
+                -Severity 'Critical' -RiskScore 90 -SecureScoreVisibility 'Passes' `
+                -Status 'Pass' -GraphEndpoint '/test' -SupportsRemediation $false)
+        )
+        $script:htmlMeta = @{
+            RunId = 'run-001'; Mode = 'Assess'; AuthMethod = 'Certificate'
+            TenantIdMasked = 'aaaa-...-eeee'; Timestamp = '2026-05-18T00:00:00Z'
+            ModuleVersion = '0.1.0'; GitCommit = 'abc1234'
+        }
+    }
+
+    It 'writes report.html to output folder' {
+        $path = Write-HtmlReport -Findings $script:htmlFindings -Metadata $script:htmlMeta -OutputFolder $script:tmpDir
+        $path | Should -Exist
+        $path | Should -Match '\.html$'
+    }
+
+    It 'HTML contains executive summary section' {
+        $path = Write-HtmlReport -Findings $script:htmlFindings -Metadata $script:htmlMeta -OutputFolder $script:tmpDir
+        $html = Get-Content $path -Raw
+        $html | Should -Match 'Executive Summary'
+    }
+
+    It 'HTML contains Technical Findings section' {
+        $path = Write-HtmlReport -Findings $script:htmlFindings -Metadata $script:htmlMeta -OutputFolder $script:tmpDir
+        $html = Get-Content $path -Raw
+        $html | Should -Match 'Technical Findings'
+    }
+
+    It 'Critical findings appear before High in HTML' {
+        $path = Write-HtmlReport -Findings $script:htmlFindings -Metadata $script:htmlMeta -OutputFolder $script:tmpDir
+        $html = Get-Content $path -Raw
+        $critPos = $html.IndexOf('Critical')
+        $highPos = $html.IndexOf('High')
+        $critPos | Should -BeLessThan $highPos
+    }
+
+    It 'HTML embeds RunId and masked TenantId' {
+        $path = Write-HtmlReport -Findings $script:htmlFindings -Metadata $script:htmlMeta -OutputFolder $script:tmpDir
+        $html = Get-Content $path -Raw
+        $html | Should -Match 'run-001'
+        $html | Should -Match 'aaaa-\.\.\.-eeee'
+    }
+
+    It 'SecureScoreVisibility badge present for each finding' {
+        $path = Write-HtmlReport -Findings $script:htmlFindings -Metadata $script:htmlMeta -OutputFolder $script:tmpDir
+        $html = Get-Content $path -Raw
+        $html | Should -Match 'Passes'
+        $html | Should -Match 'NotFlagged'
+    }
+}
